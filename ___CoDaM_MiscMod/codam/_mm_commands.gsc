@@ -22,8 +22,9 @@ init()
     if(getCvar("scr_mm_cmd_path") != "")
         level.workingdir = getCvar("scr_mm_cmd_path") + "/";
 
-    level.banfile = "miscmod_bans.dat";
-    level.reportfile = "miscmod_reports.dat";
+    //level.banfile = "miscmod_bans.dat";
+    level.dbName = "miscmod.db";
+    //level.reportfile = "miscmod_reports.dat";
 
     if(!isDefined(level.perms["default"]))
         level.perms["default"] = codam\_mm_mmm::strTok("0-4:25:26", ":"); // pff xD
@@ -1509,9 +1510,94 @@ cmd_ban(args)
             unit += "s";
     }
 
+    if(isipaddr) {
+        bannedip = args1;
+        bannedname = "^7An IP address";
+    } else {
+        bannedip = player getip();
+        bannedname = codam\_mm_mmm::namefix(player.name);
+    }
+
+    bannedby = codam\_mm_mmm::namefix(self.pers["mm_user"]);
+    hasreason = (bool)isDefined(reason);
+    if(hasreason)
+        bannedreason = codam\_mm_mmm::namefix(reason); // to prevent malicious input
+    else
+        bannedreason = "N/A";
+
+    bannedsrvtime = getSystemTime();
+
     level.banactive = true;
-    filename = level.workingdir + level.banfile;
-    if(file_exists(filename)) {
+    tableName = "bans";
+    database = level.workingdir + level.dbName;
+    dbId = sqlite_open(database);
+
+    // Check if table exists
+    query = "SELECT name FROM sqlite_master WHERE type='table' AND name='" + tableName + "';";
+    response_checkExists = sqlite_query(dbId, query);
+    if(isDefined(response_checkExists))
+        iPrintLn(".......");
+
+    if(isDefined(response_checkExists) && isDefined(response_checkExists[0]))
+    {
+        for(i=0; i<response_checkExists.size; i++) {
+            if(response_checkExists[0][i] == tableName)
+            {
+                // Table exists, proceed with banning
+
+                // Insert ban information into SQLite table
+                query = "INSERT INTO bans (ip, admin, player_name, ban_time, srv_time, reason) VALUES ('" + bannedip + "', '" + bannedby + "', '" + bannedname + "', '" + time + "', '" + bannedsrvtime + "', '" + reason + "');";
+                sqlite_query(dbId, query);
+
+                index = level.bans.size;
+                level.bans[index]["ip"] = bannedip;
+                level.bans[index]["by"] = bannedby;
+                level.bans[index]["name"] = bannedname;
+                level.bans[index]["time"] = time;
+                level.bans[index]["srvtime"] = bannedsrvtime;
+                level.bans[index]["reason"] = bannedreason;
+
+                if(self.pers["mm_ipaccess"])
+                    message_player("^5INFO: ^7You banned IP: " + bannedip);
+                else
+                    message_player("^5INFO: ^7You banned player: " + bannedname);
+
+                banmessage = bannedname + " ^7was ";
+                if(time > 0)
+                    banmessage += "temporarily ";
+                else
+                    banmessage += "permanently ";
+                banmessage += "banned by " + codam\_mm_mmm::namefix(self.name);
+                if(time > 0)
+                    banmessage += "^7 for " + preunit + " " + unit;
+                if(hasreason)
+                    banmessage += "^7 for reason: " + bannedreason;
+                banmessage += ".";
+                message(banmessage);
+
+                if(!isipaddr) {
+                    if(time > 0)
+                        kickmsg = "Temp banned (^3" + preunit + " " + unit + "^7)";
+                    else
+                        kickmsg = "Perm banned";
+                    if(hasreason)
+                        kickmsg += ": ^1" + bannedreason;
+                    player dropclient(kickmsg);
+                }
+            }
+        }
+    }
+    else
+    {
+        iPrintLn("Table not found: " + tableName);
+        //Table doesn't exist, create one
+        //createTable = "CREATE TABLE bans (id INTEGER PRIMARY KEY, ip TEXT, admin TEXT, player_name TEXT, ban_time INTEGER, srv_time INTEGER, reason TEXT);";
+        //sqlite_query(dbId, createTable);
+        //Insert the info now
+        //query = "INSERT INTO bans (ip, admin, player_name, ban_time, srv_time, reason) VALUES ('" + bannedip + "', '" + bannedby + "', '" + bannedname + "', '" + time + "', '" + bannedsrvtime + "', '" + reason + "');";
+        //sqlite_query(dbId, query);
+    }//*/
+    /*if(file_exists(filename)) {
         if(isipaddr) {
             bannedip = args1;
             bannedname = "^7An IP address";
@@ -1577,15 +1663,13 @@ cmd_ban(args)
                 kickmsg += ": ^1" + bannedreason;
             player dropclient(kickmsg);
         }
-    } else
-        message_player("^1ERROR: ^7Ban database file doesn't exist.");
-
+    }*/
     level.banactive = false;
 }
 
 cmd_report(args)
 {
-    if(args.size < 3) {
+    /*if(args.size < 3) {
         message_player("^1ERROR: ^7Invalid number of arguments.");
         return;
     }
@@ -1660,7 +1744,8 @@ cmd_report(args)
     } else
         message_player("^1ERROR: ^7Report database file doesn't exist.");
 
-    level.reportactive = false;
+    level.reportactive = false;*/
+    return;
 }
 
 isbanned(ip)
@@ -1674,7 +1759,7 @@ isbanned(ip)
 
 cmd_unban(args)
 {
-    if(args.size != 2) {
+    /*if(args.size != 2) {
         message_player("^1ERROR: ^7Invalid number of arguments.");
         return;
     }
@@ -1739,7 +1824,8 @@ cmd_unban(args)
 
         level.banactive = false;
     } else
-        message_player("^1ERROR: ^7IP address not found in the loaded banlist.");
+        message_player("^1ERROR: ^7IP address not found in the loaded banlist.");*/
+    return;
 }
 
 /* ---------- */
@@ -1800,8 +1886,44 @@ _checkFOV(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, b0, b1, b2, b3, b4, b5, b6, b7
 
 _loadBans()
 {
-    filename = level.workingdir + level.banfile;
-    if(file_exists(filename)) {
+    database = level.workingdir + level.dbName;
+    dbId = sqlite_open(database);
+
+    if(dbId)
+    {
+        response_bans = sqlite_query(dbId, "SELECT * FROM bans");
+        if(isDefined(response_bans))
+        {
+            numbans = 0;
+            unixtime = getSystemTime();
+            for(i=0; i<response_bans.size; i++)
+            {
+                numbans++;
+                bannedtime = (int)response_bans[i]["ban_time"];
+                bannedsrvtime = (int)response_bans[i]["srv_time"];
+
+                if(bannedtime > 0) { // tempban
+                    remaining = bannedtime - (unixtime - bannedsrvtime);
+                    if(remaining <= 0) // player unbanned
+                        continue;
+                }
+
+                bannedip = response_bans[i]["ip"];
+                bannedby = response_bans[i]["admin"];
+                bannedname = response_bans[i]["player_name"];
+                bannedreason = response_bans[i]["reason"];
+
+                index = level.bans.size;
+                level.bans[index]["ip"] = bannedip;
+                level.bans[index]["by"] = bannedby;
+                level.bans[index]["name"] = bannedname;
+                level.bans[index]["time"] = bannedtime;
+                level.bans[index]["srvtime"] = bannedsrvtime;
+                level.bans[index]["reason"] = bannedreason;
+            }
+        }
+    }
+    /*if(file_exists(filename)) {
         file = fopen(filename, "r");
         if(file != -1)
             data = fread(file);
@@ -1871,7 +1993,7 @@ _loadBans()
                 fclose(file);
             }
         }
-    }
+    }*/
 }
 
 _delete(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9)
@@ -3369,7 +3491,7 @@ cmd_pcvar(args) // Reworked some commands from AJ into a global !pcvar command
         message_player("^5INFO: ^7" + codam\_mm_mmm::namefix(self.name) + " ^7changed your client cvar " + cvar + " to " + cval + ".", player);
     } else {
         message_player("^1ERROR: ^7Invalid player CVAR.");
-        if(GetCvarInt("scr_mm_bannedcvar_report") > 0) {
+        /*if(GetCvarInt("scr_mm_bannedcvar_report") > 0) {
             reportreason = "[AutoReport] !pcvar " + cvar + " " +  cval;
             level.reportactive = true;
             filename = level.workingdir + level.reportfile;
@@ -3389,7 +3511,7 @@ cmd_pcvar(args) // Reworked some commands from AJ into a global !pcvar command
                 fclose(file);
             }
             level.reportactive = false;
-        }
+        }*/
     }
 }
 
@@ -3909,7 +4031,7 @@ cmd_scvar(args)
         message_player("^5INFO: ^7Server CVAR " + cvar + " set to " + cval + ".");
     } else {
         message_player("^1ERROR: ^7Invalid server CVAR.");
-        if(GetCvarInt("scr_mm_bannedcvar_report") > 0) {
+        /*if(GetCvarInt("scr_mm_bannedcvar_report") > 0) {
             reportreason = "[AutoReport] !scvar " + cvar + " " +  cval;
             level.reportactive = true;
             filename = level.workingdir + level.reportfile;
@@ -3929,7 +4051,7 @@ cmd_scvar(args)
                 fclose(file);
             }
             level.reportactive = false;
-        }
+        }*/
     }
 }
 
@@ -4054,7 +4176,7 @@ cmd_banlist(args)
 
 cmd_reportlist(args) // format: <reported by>%<reported by IP>%<reported user>%<reported user IP>%<report message>&<unixtime>
 {
-    filename = level.workingdir + level.reportfile;
+    /*filename = level.workingdir + level.reportfile;
     if(file_exists(filename)) {
         file = fopen(filename, "r");
         if(file != -1)
@@ -4150,7 +4272,8 @@ cmd_reportlist(args) // format: <reported by>%<reported by IP>%<reported user>%<
             } else
                 message_player("^1ERROR: ^7No reports in reportlist.");
         }
-    }
+    }*/
+    return;
 }
 
 cmd_namechange(args)
